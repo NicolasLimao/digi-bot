@@ -15,9 +15,12 @@ const client = new Client({
 });
 
 // URLs e IDs (preencha via variáveis de ambiente)
-const N8N_WEBHOOK_INGESTAO = process.env.N8N_WEBHOOK_INGESTAO || '';
 const RAG_API_URL = process.env.RAG_API_URL || 'http://localhost:8000/api/rag/query';
 const FEEDBACK_API_URL = RAG_API_URL.replace('/query', '/feedback');
+const INGEST_API_URL = (() => {
+  try { return new URL(RAG_API_URL).origin + '/api/ingest'; }
+  catch { return 'http://localhost:8000/api/ingest'; }
+})();
 
 const CANAL_INGESTAO = process.env.CANAL_INGESTAO || '1491637301522989198';
 const CANAL_CONSULTA = process.env.CANAL_CONSULTA || '1491637352513142914';
@@ -28,7 +31,7 @@ const feedbackMap = new Map();
 console.log('[Bot] Iniciando...');
 console.log('[Bot] RAG API URL:', RAG_API_URL);
 console.log('[Bot] Feedback API URL:', FEEDBACK_API_URL);
-console.log('[Bot] N8N Ingestão URL:', N8N_WEBHOOK_INGESTAO || '(desativada)');
+console.log('[Bot] Ingest API URL:', INGEST_API_URL);
 
 // Event: Bot conecta
 client.on('ready', () => {
@@ -110,28 +113,54 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   try {
-    // 1. CANAL DE INGESTÃO - encaminha pro n8n (se configurado)
+    // 1. CANAL DE INGESTÃO - chama a API Python (substituiu o n8n)
     if (message.channelId === CANAL_INGESTAO) {
-      if (!N8N_WEBHOOK_INGESTAO) {
-        console.log('[Ingestao] N8N_WEBHOOK_INGESTAO não configurado, ignorando.');
-        return;
+      console.log(`[Ingestao] Recebido de ${message.author.username} (anexos: ${message.attachments.size})`);
+      const tInicio = Date.now();
+
+      // Mensagem inicial (editamos no fim — evita rate limit do Discord)
+      let ack;
+      try {
+        ack = await message.reply('📥 Recebido, processando ingestão...');
+      } catch (e) {
+        console.error(`[Ingestao] Falha ao confirmar recebimento: ${e.message}`);
       }
-      console.log(`[Ingestao] Documento de ${message.author.username}`);
+
       const payload = {
-        channelId: message.channelId,
-        content: message.content,
-        id: message.id,
+        content: message.content || null,
         attachments: message.attachments.map(a => ({
           url: a.url,
           filename: a.name,
           contentType: a.contentType
         }))
       };
+
       try {
-        await axios.post(N8N_WEBHOOK_INGESTAO, payload, { timeout: 5000 });
-        console.log(`[Ingestao] ✅ Enviado para n8n`);
+        // Timeout alto: PDFs grandes podem levar minutos (extração + embedding + insert)
+        const response = await axios.post(INGEST_API_URL, payload, { timeout: 600000 });
+        const r = response.data;
+        const elapsed = ((Date.now() - tInicio) / 1000).toFixed(1);
+        const fontes = (r.sources || []).map(s => `${s.source} (${s.chunks})`).join(', ');
+        const avisos = (r.errors || []).slice(0, 3).join('; ');
+
+        let msg = `✅ Ingestão concluída em **${elapsed}s**\n**${r.chunks_created} chunks** criados (${(r.total_chars || 0).toLocaleString('pt-BR')} chars)`;
+        if (fontes) msg += `\n📄 Fontes: ${fontes}`;
+        if (avisos) msg += `\n⚠️ Avisos: ${avisos}`;
+        if (msg.length > 1900) msg = msg.substring(0, 1900);
+
+        if (ack) await ack.edit(msg);
+        else await message.reply(msg);
+        console.log(`[Ingestao] ✅ ${r.chunks_created} chunks em ${elapsed}s`);
       } catch (error) {
-        console.error(`[Ingestao] ❌ Erro: ${error.message}`);
+        const detail = error.response?.data?.detail || error.message;
+        const msg = `❌ Falha na ingestão: ${String(detail).substring(0, 400)}`;
+        console.error(`[Ingestao] ❌ ${error.message}`);
+        try {
+          if (ack) await ack.edit(msg);
+          else await message.reply(msg);
+        } catch (e) {
+          console.error(`[Ingestao] Falha ao reportar erro: ${e.message}`);
+        }
       }
       return;
     }

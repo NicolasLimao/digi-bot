@@ -10,22 +10,19 @@ Bot do Discord para o **Digi** — assistente de suporte interno da Digisac. Rec
 
 ## Como funciona
 
-1. Recebe mensagem no canal de consulta ou DM
-2. Chama `POST {RAG_API_URL}` com `{query}` + `user_id` + `canal`
-3. Responde no Discord
-4. Adiciona reações ✅/❌; quando o usuário reage, chama `POST /api/rag/feedback`
-5. (Opcional) Encaminha posts do canal de ingestão pro n8n
+1. Recebe mensagem no canal de consulta ou DM → chama `POST /api/rag/query` → responde
+2. Adiciona reações ✅/❌; quando o usuário reage, chama `POST /api/rag/feedback`
+3. Recebe post (texto/PDF) no canal de ingestão → chama `POST /api/ingest` → responde com o total de chunks criados
 
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` e preencha. Variáveis obrigatórias:
 
 - `DISCORD_BOT_TOKEN` — token do bot no Discord Developer Portal
-- `RAG_API_URL` — URL do endpoint `/api/rag/query` da Digi RAG API
+- `RAG_API_URL` — URL do endpoint `/api/rag/query` da Digi RAG API (a URL de `/api/ingest` é derivada desta automaticamente)
 
 Opcionais:
 
-- `N8N_WEBHOOK_INGESTAO` — webhook do n8n para ingestão (deixe vazio para desativar)
 - `CANAL_INGESTAO`, `CANAL_CONSULTA` — IDs dos canais (tem default no código)
 
 ## Rodando localmente
