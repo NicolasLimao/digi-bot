@@ -9,6 +9,9 @@ yarn-error.log*
 .env.*
 !.env.example
 
+# Ferramentas de IA / metadados de assistente
+.claude/
+
 # OS / IDE
 .DS_Store
 Thumbs.db
