@@ -25,6 +25,11 @@ const INGEST_API_URL = (() => {
 const CANAL_INGESTAO = process.env.CANAL_INGESTAO || '1491637301522989198';
 const CANAL_CONSULTA = process.env.CANAL_CONSULTA || '1491637352513142914';
 
+// A API exige X-API-Key em todas as rotas /api/* quando roda em produção
+const API_HEADERS = process.env.API_AUTH_TOKEN
+  ? { 'X-API-Key': process.env.API_AUTH_TOKEN }
+  : {};
+
 // Mapeia: id da mensagem de resposta do bot -> interaction_id (para gravar feedback)
 const feedbackMap = new Map();
 
@@ -65,7 +70,7 @@ async function handleRagQuery(message, userId, query, canal, logPrefix) {
     url.searchParams.append('user_id', userId);
     url.searchParams.append('canal', canal);
 
-    const response = await axios.post(url.toString(), { query }, { timeout: 60000 });
+    const response = await axios.post(url.toString(), { query }, { timeout: 60000, headers: API_HEADERS });
 
     const result = response.data;
     const responseText = result.response || 'Sem resposta';
@@ -137,7 +142,7 @@ client.on('messageCreate', async (message) => {
 
       try {
         // Timeout alto: PDFs grandes podem levar minutos (extração + embedding + insert)
-        const response = await axios.post(INGEST_API_URL, payload, { timeout: 600000 });
+        const response = await axios.post(INGEST_API_URL, payload, { timeout: 600000, headers: API_HEADERS });
         const r = response.data;
         const elapsed = ((Date.now() - tInicio) / 1000).toFixed(1);
         const fontes = (r.sources || []).map(s => `${s.source} (${s.chunks})`).join(', ');
@@ -201,7 +206,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     else if (reaction.emoji.name === '❌') feedback = 'negativo';
     if (!feedback) return;
 
-    await axios.post(FEEDBACK_API_URL, { interaction_id: interactionId, feedback }, { timeout: 10000 });
+    await axios.post(FEEDBACK_API_URL, { interaction_id: interactionId, feedback }, { timeout: 10000, headers: API_HEADERS });
     console.log(`[Feedback] ${feedback} registrado para ${interactionId}`);
 
   } catch (error) {
