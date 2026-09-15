@@ -63,7 +63,12 @@ function dividirMensagem(texto) {
 
 // Consulta o RAG, responde, e adiciona reações de feedback
 async function handleRagQuery(message, userId, query, canal, logPrefix) {
-  await message.channel.sendTyping();
+  // Typing e cosmetico: um erro do Discord aqui nao pode abortar a resposta
+  try {
+    await message.channel.sendTyping();
+  } catch (e) {
+    console.error(`${logPrefix} Falha no sendTyping (ignorado): ${e.message}`);
+  }
 
   try {
     const url = new URL(RAG_API_URL);
